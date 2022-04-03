@@ -19,7 +19,7 @@ type ReadonlyFs interface {
 	Open(filename string) (ReadonlyFile, error)
 }
 
-// Readonly is a readonly file
+// ReadonlyFile is a readonly file
 type ReadonlyFile interface {
 	io.ReadCloser
 }
