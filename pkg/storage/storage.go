@@ -7,11 +7,14 @@ import (
 
 // Storage represents under storage interface
 type Storage interface {
-	// Use a namespace to provide the readonly filesystem
-	Use(ctx context.Context, namespace string) (ReadonlyFs, error)
+	// Get readonly filesystem from storage
+	Get(ctx context.Context) (ReadonlyFs, error)
 
-	// Env is used to set the storage environment
-	Env(ctx context.Context, env string) Storage
+	// Use readonly file with a namespace
+	Use(ctx context.Context, namespace string) (ReadonlyFile, error)
+
+	// Env returns storage environment
+	Env(ctx context.Context) string
 }
 
 // ReadonlyFs is a readonly filesystem

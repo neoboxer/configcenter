@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"log"
 	"os"
 	"sync"
@@ -16,14 +15,15 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/storage"
 	"github.com/go-git/go-git/v5/storage/memory"
 )
 
 const (
-	defaultFetchTimeout = 2 * time.Second
-	defaultFetchTTL     = 10 * time.Second
-	defaultFilePrefix   = "jsonnet"
+	defaultFetchTTL      = 10 * time.Second
+	defaultFetchTimeout  = 2 * time.Second
+	defaultFileExtension = "jsonnet"
 )
 
 type gitInfo struct {
@@ -37,46 +37,23 @@ func (g gitInfo) isSameHash() bool {
 	return g.local == g.remote
 }
 
-type Git struct {
-	// URL
-	URL string
-	// FetchTimeout
-	FetchTimeout time.Duration
-	// FetchTTL
-	FetchTTL time.Duration
-	// auth
-	auth transport.AuthMethod
-	// init represents the first fetch operation, remain false until first successful fetch
-	init bool
-	// infos represents git reference information
-	infos map[plumbing.ReferenceName]gitInfo
-	// remote
-	remote *Remote
-	// storage
-	storage  storage.Storer
-	syncTime time.Time
-	lock     sync.Locker
-	env      string
-	prefix   string
-}
-
 type GitOption struct {
-	Env          string
-	Name         string
-	Auth         http.AuthMethod
-	FilePrefix   string
-	FetchTTL     time.Duration
-	FetchTimeout time.Duration
+	Env           string
+	Name          string
+	Auth          http.AuthMethod
+	FetchTTL      time.Duration
+	FetchTimeout  time.Duration
+	FileExtension string
 }
 
 func NewGitOption() *GitOption {
 	return &GitOption{
-		Env:          "master",
-		Name:         "origin",
-		Auth:         nil,
-		FilePrefix:   defaultFilePrefix,
-		FetchTTL:     defaultFetchTTL,
-		FetchTimeout: defaultFetchTimeout,
+		Env:           "master",
+		Name:          "origin",
+		Auth:          nil,
+		FetchTTL:      defaultFetchTTL,
+		FetchTimeout:  defaultFetchTimeout,
+		FileExtension: defaultFileExtension,
 	}
 }
 
@@ -95,11 +72,6 @@ func (p *GitOption) WithAuth(auth http.AuthMethod) *GitOption {
 	return p
 }
 
-func (p *GitOption) WithFilePrefix(prefix string) *GitOption {
-	p.FilePrefix = prefix
-	return p
-}
-
 func (p *GitOption) WithFetchTTL(TTL time.Duration) *GitOption {
 	p.FetchTTL = TTL
 	return p
@@ -108,6 +80,27 @@ func (p *GitOption) WithFetchTTL(TTL time.Duration) *GitOption {
 func (p *GitOption) WithFetchTimeout(timeout time.Duration) *GitOption {
 	p.FetchTimeout = timeout
 	return p
+}
+
+func (p *GitOption) WithFileExtensino(extension string) *GitOption {
+	p.FileExtension = extension
+	return p
+}
+
+// Git storage for git repository
+type Git struct {
+	URL          string                             // git repository URL
+	FetchTimeout time.Duration                      // fetch repoistory timeout
+	FetchTTL     time.Duration                      // fetch repoistory TTL
+	auth         transport.AuthMethod               // fetch repository auth method
+	init         bool                               // remain false until first successful fetch
+	infos        map[plumbing.ReferenceName]gitInfo // git reference information
+	storage      storage.Storer                     // store git reposioty files
+	lock         sync.Locker                        // lock git storage struct
+	syncTime     time.Time                          // latest fetch references sync time
+	remote       *Remote                            // connection to a remote repository
+	env          string                             // env represents a config environment
+	ext          string                             // ext represents config file extension
 }
 
 func NewGit(URL string, options ...*GitOption) *Git {
@@ -133,21 +126,31 @@ func NewGit(URL string, options ...*GitOption) *Git {
 		storage:      store,
 		lock:         &sync.Mutex{},
 		env:          option.Env,
-		prefix:       option.FilePrefix,
+		ext:          option.FileExtension,
 	}
 }
 
-func (g *Git) Env(ctx context.Context, env string) (ReadonlyFs, error) {
-	g.lock.Lock()
-	g.env = env
-	g.lock.Unlock()
+func (g *Git) Use(ctx context.Context, namespace string) (file ReadonlyFile, err error) {
+	var fs ReadonlyFs
+	if fs, err = g.Get(ctx); err != nil {
+		return
+	}
+	file, err = fs.Open(fmt.Sprintf("%s.%s", namespace, g.ext))
+	return
+}
+
+func (g *Git) Env(ctx context.Context) string {
+	return g.env
+}
+
+func (g *Git) Get(ctx context.Context) (ReadonlyFs, error) {
 	if !g.skipFetch() {
 		if err := g.fetch(ctx); err != nil {
 			return nil, err
 		}
 	}
 
-	branch, err := g.getBranch(env)
+	branch, err := g.getBranch(g.env)
 	if err != nil {
 		return nil, err
 	}
@@ -158,15 +161,6 @@ func (g *Git) Env(ctx context.Context, env string) (ReadonlyFs, error) {
 		}
 	}
 	return g.infos[branch].fs, nil
-}
-
-func (g *Git) Use(ctx context.Context, namespace string) (file ReadonlyFile, err error) {
-	var fs ReadonlyFs
-	if fs, err = g.Env(ctx, g.env); err != nil {
-		return
-	}
-	file, err = fs.Open(fmt.Sprintf("%s.%s", namespace, g.prefix))
-	return
 }
 
 func (g *Git) fetch(ctx context.Context) error {
@@ -295,9 +289,6 @@ func (g *Git) skipFetch() bool {
 func (g *Git) skipCheckout(branch plumbing.ReferenceName) bool {
 	return g.infos[branch].isSameHash()
 }
-
-// 对于git文件系统而言，需要提供哪些信息
-// 如何表示远程分支 -> 本地分支的对应关系
 
 type internalFs struct {
 	billy.Filesystem

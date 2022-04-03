@@ -2,29 +2,31 @@ package storage
 
 import (
 	"context"
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"io/ioutil"
 	"testing"
+
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
 const repo = "https://github.com/neoboxer/outbox-config.git"
+const username = "access_token_with_any_non_empty_string"
+const accessToken = "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"
 
 func TestNewGit(t *testing.T) {
-	auth := &http.BasicAuth{
-		Username: "ryan-ovo",
-		Password: "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",
-	}
-	g := NewGit(repo, NewGitOption().WithAuth(auth))
 	ctx := context.Background()
-	if _, err := g.Env(ctx, "test"); err != nil {
-		t.Fatal(err)
+
+	auth := &http.BasicAuth{
+		Username: username,
+		Password: accessToken,
 	}
+	g := NewGit(repo, NewGitOption().WithAuth(auth).WithEnv("test"))
+
 	file, err := g.Use(ctx, "default")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var data []byte
-	data, err = ioutil.ReadAll(file)
+
+	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		t.Fatal(err)
 	}
