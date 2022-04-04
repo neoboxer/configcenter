@@ -23,6 +23,7 @@ import (
 const (
 	defaultFetchTTL      = 10 * time.Second
 	defaultFetchTimeout  = 2 * time.Second
+	defaultFileName      = "default"
 	defaultFileExtension = "jsonnet"
 )
 
