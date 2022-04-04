@@ -10,7 +10,7 @@ import (
 
 const repo = "https://github.com/neoboxer/outbox-config.git"
 const username = "access_token_with_any_non_empty_string"
-const accessToken = "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"
+const accessToken = "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"
 
 func TestNewGit(t *testing.T) {
 	ctx := context.Background()
